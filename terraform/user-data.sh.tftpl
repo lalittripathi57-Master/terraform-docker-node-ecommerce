@@ -1,0 +1,39 @@
+#!/bin/bash
+set -euxo pipefail
+exec > >(tee /var/log/ecommerce-user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
+
+apt-get update -y
+DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io curl
+systemctl enable --now docker
+
+# Docker network for service-to-service communication.
+docker network create ecommerce-net || true
+
+# Pull images from Docker Hub.
+docker pull ${dockerhub_username}/user-service:latest
+docker pull ${dockerhub_username}/products-service:latest
+docker pull ${dockerhub_username}/orders-service:latest
+docker pull ${dockerhub_username}/cart-service:latest
+docker pull ${dockerhub_username}/ecommerce-frontend:latest
+
+# Remove old containers if the script is rerun.
+for c in user-service products-service orders-service cart-service ecommerce-frontend; do
+  docker rm -f "$c" 2>/dev/null || true
+done
+
+# Backend containers are published only on localhost; containers also communicate by name on ecommerce-net.
+docker run -d --restart unless-stopped --name user-service --network ecommerce-net -p 127.0.0.1:3001:3001 ${dockerhub_username}/user-service:latest
+docker run -d --restart unless-stopped --name products-service --network ecommerce-net -p 127.0.0.1:3002:3002 ${dockerhub_username}/products-service:latest
+docker run -d --restart unless-stopped --name orders-service --network ecommerce-net -p 127.0.0.1:3003:3003 ${dockerhub_username}/orders-service:latest
+docker run -d --restart unless-stopped --name cart-service --network ecommerce-net -p 127.0.0.1:3004:3004 ${dockerhub_username}/cart-service:latest
+
+# Frontend is public on EC2 port 3000.
+docker run -d --restart unless-stopped --name ecommerce-frontend --network ecommerce-net \
+  -p 3000:3000 \
+  -e USER_SERVICE_URL=http://user-service:3001 \
+  -e PRODUCTS_SERVICE_URL=http://products-service:3002 \
+  -e ORDERS_SERVICE_URL=http://orders-service:3003 \
+  -e CART_SERVICE_URL=http://cart-service:3004 \
+  ${dockerhub_username}/ecommerce-frontend:latest
+
+docker ps

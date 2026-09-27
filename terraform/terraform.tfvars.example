@@ -1,0 +1,5 @@
+aws_region         = "ap-south-1"
+instance_type      = "t3.micro"
+dockerhub_username = "YOUR_DOCKERHUB_USERNAME"
+# ssh_public_key   = "ssh-ed25519 AAAA..."
+# admin_cidr       = "203.0.113.10/32"
